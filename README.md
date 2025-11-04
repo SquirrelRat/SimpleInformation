@@ -4,9 +4,9 @@ A clean, customizable, all-in-one information bar for ExileAPI.
 
 ---
 
-> **Important:** This plugin is designed as a **replacement** for the default "MiscInformation" plugin provided with ExileCore.
+> **Important:** This plugin is designed as a **replacement** for the default "MiscInformation" plugin provided with ExileAPI.
 >
-> To avoid overlapping information and UI clutter, please **disable "MiscInformation"** in the ExileCore settings (F12) if you choose to use "SimpleInformation".
+> To avoid overlapping information and UI clutter, please **disable "MiscInformation"** in the ExileAPI settings (F12) if you choose to use "SimpleInformation".
 
 ---
 
@@ -15,9 +15,7 @@ A clean, customizable, all-in-one information bar for ExileAPI.
 * **All-in-One Information Bar:** Consolidates all your essential data into a single, clean, horizontal bar that docks neatly on the top of the screen.
 
 <img width="746" height="25" alt="image" src="https://github.com/user-attachments/assets/032547cc-42e6-47fd-a5c6-b4d1303b2e7e" />
-
-<br> 
-<br>
+<p></p>
 
 * **Key Statistics at a Glance:** Tracks and displays:
     * Player Level
