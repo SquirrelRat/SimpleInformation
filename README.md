@@ -31,10 +31,10 @@ A clean, customizable, all-in-one information bar for ExileAPI.
 
 * **Multiple Color Schemes:** Choose from several built-in themes to match your preferred look, including Dracula, Solarized Dark, Inverted, and Default.
 
-| Scheme | Preview |
-| :--- | :--- |
-| **Default:** | <img width="754" height="20" alt="image" src="https://github.com/user-attachments/assets/255a2840-eaa0-4be2-a753-0c74846a5944" /> |
-| **SolarizedDark:** | <img width="748" height="19" alt="image" src="https://github.com/user-attachments/assets/e51fd6c9-8ac0-4fb5-b449-9639580b3d42" /> |
-| **Dracula:** | <img width="752" height="21" alt="image" src="https://github.com/user-attachments/assets/3d3db4b4-c912-41e0-b1b3-be5a3a9e44f3" /> |
-| **Inverted:** | <img width="751" height="20" alt="image" src="https://github.com/user-attachments/assets/daeae6e1-44af-4b24-b7c6-2ee47bbc941e" /> |
+| Schemes |
+| :--- |
+| <img width="754" height="20" alt="image" src="https://github.com/user-attachments/assets/255a2840-eaa0-4be2-a753-0c74846a5944" /> |
+| <img width="748" height="19" alt="image" src="https://github.com/user-attachments/assets/e51fd6c9-8ac0-4fb5-b449-9639580b3d42" /> |
+| <img width="752" height="21" alt="image" src="https://github.com/user-attachments/assets/3d3db4b4-c912-41e0-b1b3-be5a3a9e44f3" /> |
+| <img width="751" height="20" alt="image" src="https://github.com/user-attachments/assets/daeae6e1-44af-4b24-b7c6-2ee47bbc941e" /> |
 
