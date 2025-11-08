@@ -63,4 +63,16 @@ namespace SimpleInformation
         public override Color Xph => Color.Black;
         public override Color XphGetLeft => Color.Black;
     }
+
+    public class Cyberpunk2077ColorScheme : ColorScheme
+    {
+        public override Color Background => new Color(30, 45, 60, 255); 
+        public override Color Timer => new Color(255, 97, 89, 255);     
+        public override Color Fps => new Color(255, 97, 89, 255);    
+        public override Color Ping => new Color(255, 97, 89, 255);    
+        public override Color Area => new Color(76, 176, 165, 255);   
+        public override Color TimeLeft => new Color(255, 97, 89, 255);     
+        public override Color Xph => new Color(255, 97, 89, 255);    
+        public override Color XphGetLeft => new Color(255, 97, 89, 255);   
+    }
 }

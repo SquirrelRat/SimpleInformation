@@ -12,7 +12,8 @@ namespace SimpleInformation
         Default,
         SolarizedDark,
         Dracula,
-        Inverted
+        Inverted,
+        Cyberpunk2077
     }
 
     public class SimpleInformationSettings : ISettings
@@ -27,9 +28,23 @@ namespace SimpleInformation
             Value = "Dracula",
             Values = new List<string>(Enum.GetNames(typeof(ColorSchemeList)))
         };
-        [Menu("Bar Width", "Sets the total width of the information bar.")]
-        public RangeNode<int> BarWidth { get; set; } = new RangeNode<int>(750, 100, 2000);
         [Menu("Background Alpha", "Controls the transparency of the background of the information bar (0-255).")]
         public RangeNode<int> BackgroundAlpha { get; set; } = new RangeNode<int>(150, 0, 255);
+        [Menu("Show Gold", "Toggles the display of the player's gold amount.")]
+        public ToggleNode ShowGold { get; set; } = new ToggleNode(true);
+        [Menu("Show Player Level", "Toggles the display of the player's level.")]
+        public ToggleNode ShowPlayerLevel { get; set; } = new ToggleNode(true);
+        [Menu("Show Area Time", "Toggles the display of the time spent in the current area.")]
+        public ToggleNode ShowAreaTime { get; set; } = new ToggleNode(true);
+        [Menu("Show Ping", "Toggles the display of the player's ping.")]
+        public ToggleNode ShowPing { get; set; } = new ToggleNode(true);
+        [Menu("Show Area Name", "Toggles the display of the current area's name.")]
+        public ToggleNode ShowAreaName { get; set; } = new ToggleNode(true);
+        [Menu("Show Time Left to Level", "Toggles the display of the estimated time left to level up.")]
+        public ToggleNode ShowTimeLeft { get; set; } = new ToggleNode(true);
+        [Menu("Show XP Rate", "Toggles the display of the player's experience gain rate.")]
+        public ToggleNode ShowXpRate { get; set; } = new ToggleNode(true);
+        [Menu("Show G/H", "Toggles the display of the player's gold per hour.")]
+        public ToggleNode ShowGoldPerHour { get; set; } = new ToggleNode(true);
     }
 }

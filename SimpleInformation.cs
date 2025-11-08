@@ -41,24 +41,43 @@ namespace SimpleInformation
         private TimeCache<bool> CalcXp;
         private bool CanRender;
         private DebugInformation debugInformation;
-        private Vector2N drawTextVector2;
         private string latency = "";
         private string ping = "";
+        private int pingBars;
+        private Color pingBarColor;
+        private string gold = "";
+        private string goldPerHour = "";
         private RectangleF leftPanelStartDrawRect = RectangleF.Empty;
         private TimeCache<bool> LevelPenalty;
         private double levelXpPenalty, partyXpPenalty;
         private float percentGot;
-        private double partytime = 4000;
-        private DateTime startTime, lastTime;
+        private DateTime startTime;
         private long startXp, getXp, xpLeftQ;
-        private float startY;
-        private double time;
+        private DateTime lastTime;
         private string Time = "";
         private string timeLeft = "";
         private TimeSpan timeSpan;
         private string xpRate = "";
         private string xpText = "";
         private string playerLevelText = "";
+        private TimeSpan _timeToEmptyCountdown = TimeSpan.Zero;
+        private long _lastStoredGoldForCountdown = -1;
+
+        private long _sessionGoldGained = 0;
+        private TimeSpan _sessionElapsedTime = TimeSpan.Zero;
+        private long _sessionGoldSpentFromStash = 0;
+        private TimeSpan _sessionStashSpendElapsedTime = TimeSpan.Zero;
+        private long _lastInventoryGold = 0;
+        private long _lastStoredGold = 0;
+        private DateTime _lastGoldActivityTime = DateTime.UtcNow;
+        private DateTime _lastStashSpendActivityTime = DateTime.UtcNow;
+
+        private long _lastAreaGoldGained = 0;
+        private double _lastAreaXpGained = 0;
+        private TimeSpan _lastAreaTimeSpent = TimeSpan.Zero;
+        private int _startLevel;
+        private int _lastAreaStartLevel;
+        private AreaInstance _previousArea;
 
         public float GetEffectiveLevel(int monsterLevel)
         {
@@ -82,23 +101,32 @@ namespace SimpleInformation
             GameController.LeftPanel.WantUse(() => Settings.Enable);
             CalcXp = new TimeCache<bool>(() =>
             {
-                partytime += time;
-                time = 0;
-                CalculateXp();
-                var areaCurrentArea = GameController.Area.CurrentArea;
-
-                if (areaCurrentArea == null)
-                    return false;
-
-                timeSpan = DateTime.UtcNow - areaCurrentArea.TimeEntered;
-
-                Time = AreaInstance.GetTimeString(timeSpan);
-                xpText = $"{xpRate} ({percentGot:P0})".ToUpper();
-
-                if (partytime > 4900)
+                var gameUi = GameController.Game.IngameState.IngameUi;
+                if (GameController.Area.CurrentArea == null || gameUi.InventoryPanel.IsVisible || gameUi.SyndicatePanel.IsVisibleLocal)
                 {
-                    var levelPenaltyValue = LevelPenalty.Value;
+                    CanRender = false;
+                    return false;
                 }
+
+                var UIHover = GameController.Game.IngameState.UIHover;
+                if (UIHover.Tooltip != null && UIHover.Tooltip.IsVisibleLocal &&
+                    UIHover.Tooltip.GetClientRectCache.Intersects(leftPanelStartDrawRect))
+                {
+                    CanRender = false;
+                    return false;
+                }
+
+                CanRender = true;
+
+                var now = DateTime.UtcNow;
+                var deltaTime = now - lastTime;
+                lastTime = now;
+
+                UpdateLevelAndXp();
+                UpdateGeneralInfo();
+                UpdateGoldStats(deltaTime);
+
+                var levelPenaltyValue = LevelPenalty.Value;
 
                 return true;
             }, 1000);
@@ -108,12 +136,10 @@ namespace SimpleInformation
                 partyXpPenalty = PartyXpPenalty();
                 levelXpPenalty = LevelXpPenalty();
                 return true;
-            }, 5000);
+            }, 1000);
 
-            GameController.EntityListWrapper.PlayerUpdate += OnEntityListWrapperOnPlayerUpdate;
             OnEntityListWrapperOnPlayerUpdate(this, GameController.Player);
 
-            debugInformation = new DebugInformation("Game FPS", "Collect game fps", false);
             return true;
         }
 
@@ -122,7 +148,7 @@ namespace SimpleInformation
             percentGot = 0;
             xpRate = "0.00 xp/h";
             var level = GameController.Player.GetComponent<Player>()?.Level ?? 100;
-            playerLevelText = $"Level: {level}";
+            playerLevelText = $"Lvl: {level}";
             timeLeft = "-h -m -s to Level Up";
             getXp = 0;
             xpLeftQ = 0;
@@ -131,49 +157,37 @@ namespace SimpleInformation
             startTime = lastTime = DateTime.UtcNow;
             startXp = entity.GetComponent<Player>().XP;
             levelXpPenalty = LevelXpPenalty();
+            _startLevel = level;
         }
 
         public override void AreaChange(AreaInstance area)
         {
+            _lastStoredGoldForCountdown = -1;
             LevelPenalty.ForceUpdate();
-        }
 
-        public override Job Tick()
-        {
-            TickLogic();
-            return null;
-        }
-
-        private void TickLogic()
-        {
-            time += GameController.DeltaTime;
-            var gameUi = GameController.Game.IngameState.IngameUi;
-
-            if (GameController.Area.CurrentArea == null || gameUi.InventoryPanel.IsVisible || gameUi.SyndicatePanel.IsVisibleLocal)
+            if (_previousArea != null && !_previousArea.IsHideout && !_previousArea.IsTown)
             {
-                CanRender = false;
-                return;
+                _lastAreaGoldGained = _sessionGoldGained;
+                _lastAreaXpGained = GameController.Player.GetComponent<Player>().XP - startXp;
+                _lastAreaTimeSpent = timeSpan;
+                _lastAreaStartLevel = _startLevel;
             }
 
-            var UIHover = GameController.Game.IngameState.UIHover;
+            _sessionGoldGained = 0;
+            _sessionElapsedTime = TimeSpan.Zero;
+            _sessionGoldSpentFromStash = 0;
+            _sessionStashSpendElapsedTime = TimeSpan.Zero;
 
-            if (UIHover.Tooltip != null && UIHover.Tooltip.IsVisibleLocal &&
-                UIHover.Tooltip.GetClientRectCache.Intersects(leftPanelStartDrawRect))
-            {
-                CanRender = false;
-                return;
-            }
+            var currentGold = GameController.Game.IngameState.ServerData.Gold;
+            var storedGold = GameController.Game.IngameState.IngameUi.VillageScreen?.CurrentGold ?? 0;
+            _lastInventoryGold = currentGold;
+            _lastStoredGold = storedGold;
+            _lastGoldActivityTime = DateTime.UtcNow;
 
-            CanRender = true;
-
-            var calcXpValue = CalcXp.Value;
-            
-            var areaSuffix = (GameController.Area.CurrentArea.RealLevel >= 68)
-                ? $" - T{GameController.Area.CurrentArea.RealLevel - 67}"
-                : "";
-
-            areaName = $"{GameController.Area.CurrentArea.DisplayName}{areaSuffix}";
-            ping = $"Ping: {GameController.Game.IngameState.ServerData.Latency}";
+            startTime = lastTime = DateTime.UtcNow;
+            startXp = GameController.Player.GetComponent<Player>().XP;
+            getXp = 0;
+            _startLevel = GameController.Player.GetComponent<Player>().Level;
         }
 
         private void CalculateXp()
@@ -182,7 +196,6 @@ namespace SimpleInformation
 
             if (level >= 100)
             {
-                
                 xpRate = "0.00 xp/h";
                 timeLeft = "--h--m--s";
                 return;
@@ -198,7 +211,7 @@ namespace SimpleInformation
                 var xpLeft = Constants.PlayerXpLevels[level + 1] - currentXp;
                 xpLeftQ = xpLeft;
                 var time = TimeSpan.FromHours(xpLeft / rate);
-                timeLeft = $"{time.Hours:0}h {time.Minutes:00}m {time.Seconds:00}s to Level Up";
+                timeLeft = $"Lvl Up: {time.Hours:0}h {time.Minutes:00}m {time.Seconds:00}s";
 
                 if (getXp == 0)
                     percentGot = 0;
@@ -218,7 +231,6 @@ namespace SimpleInformation
 
             if (arenaLevel > 70 && !ArenaEffectiveLevels.ContainsKey(arenaLevel))
             {
-                
                 ArenaEffectiveLevels.Add(arenaLevel, GetEffectiveLevel(arenaLevel));
             }
             var effectiveArenaLevel = arenaLevel < 71 ? arenaLevel : ArenaEffectiveLevels[arenaLevel];
@@ -249,69 +261,287 @@ namespace SimpleInformation
             return partyXpPenalty * levels.Count;
         }
 
-        private ColorScheme GetColorScheme()
+        private void UpdateLevelAndXp()
         {
-            var scheme = (ColorSchemeList)Enum.Parse(typeof(ColorSchemeList), Settings.ColorScheme.Value);
-            switch (scheme)
+            var level = GameController.Player.GetComponent<Player>()?.Level ?? 100;
+            playerLevelText = $"Lvl: {level}";
+            if (level != _startLevel)
             {
-                case ColorSchemeList.SolarizedDark:
-                    return new SolarizedDarkColorScheme();
-                case ColorSchemeList.Dracula:
-                    return new DraculaColorScheme();
-                case ColorSchemeList.Inverted:
-                    return new InvertedColorScheme();
-                default:
-                    return new DefaultColorScheme();
+                OnEntityListWrapperOnPlayerUpdate(this, GameController.Player);
+            }
+            CalculateXp();
+        }
+
+        private void UpdateGeneralInfo()
+        {
+            var areaCurrentArea = GameController.Area.CurrentArea;
+            timeSpan = DateTime.UtcNow - areaCurrentArea.TimeEntered;
+            Time = AreaInstance.GetTimeString(timeSpan);
+            xpText = $"{xpRate} ({percentGot:P0})".ToUpper();
+
+            var areaSuffix = (areaCurrentArea.RealLevel >= 68) ? $" - T{areaCurrentArea.RealLevel - 67}" : "";
+            areaName = $"{areaCurrentArea.DisplayName}{areaSuffix}";
+            ping = $"Ping: {GameController.Game.IngameState.ServerData.Latency}";
+
+            var latency = GameController.Game.IngameState.ServerData.Latency;
+            if (latency < 50) { pingBars = 4; pingBarColor = Color.Green; }
+            else if (latency <= 100) { pingBars = 3; pingBarColor = Color.Green; }
+            else if (latency <= 150) { pingBars = 2; pingBarColor = Color.Yellow; }
+            else { pingBars = 1; pingBarColor = Color.Red; }
+        }
+
+        private void UpdateGoldStats(TimeSpan deltaTime)
+        {
+            if (!Settings.ShowGoldPerHour.Value && !Settings.ShowGold.Value)
+            {
+                goldPerHour = "";
+                gold = "";
+                _sessionGoldGained = 0;
+                _sessionElapsedTime = TimeSpan.Zero;
+                _sessionGoldSpentFromStash = 0;
+                _sessionStashSpendElapsedTime = TimeSpan.Zero;
+                var currentGoldOnReset = GameController.Game.IngameState.ServerData.Gold;
+                var storedGoldOnReset = GameController.Game.IngameState.IngameUi.VillageScreen?.CurrentGold ?? 0;
+                _lastInventoryGold = currentGoldOnReset;
+                _lastStoredGold = storedGoldOnReset;
+                _lastGoldActivityTime = DateTime.UtcNow;
+                return;
+            }
+
+            var currentGold = GameController.Game.IngameState.ServerData.Gold;
+            var storedGold = GameController.Game.IngameState.IngameUi.VillageScreen?.CurrentGold ?? 0;
+
+            var villageScreen = GameController.Game.IngameState.IngameUi.VillageScreen;
+            var totalWagePerHour = villageScreen?.TotalWagePerHour ?? 0;
+            if (storedGold > 0 && villageScreen != null && totalWagePerHour > 0)
+            {
+                if (storedGold != _lastStoredGoldForCountdown)
+                {
+                    _timeToEmptyCountdown = TimeSpan.FromHours((double)storedGold / totalWagePerHour);
+                    _lastStoredGoldForCountdown = storedGold;
+                }
+                else
+                {
+                    _timeToEmptyCountdown -= deltaTime;
+                }
+                _timeToEmptyCountdown = _timeToEmptyCountdown < TimeSpan.Zero ? TimeSpan.Zero : _timeToEmptyCountdown;
+            }
+            else
+            {
+                _timeToEmptyCountdown = TimeSpan.Zero;
+            }
+
+            if (GameController.Area.CurrentArea.IsHideout || GameController.Area.CurrentArea.IsTown)
+            {
+                goldPerHour = "G/H: N/A";
+            }
+            else
+            {
+                if (!GameController.Area.CurrentArea.IsPeaceful && !IsAnyGameUIVisible())
+                {
+                    _sessionElapsedTime += deltaTime;
+                }
+
+                var inventoryGoldDifference = currentGold - _lastInventoryGold;
+                if (inventoryGoldDifference > 0)
+                {
+                    _sessionGoldGained += inventoryGoldDifference;
+                    _lastGoldActivityTime = DateTime.UtcNow;
+                }
+                _lastInventoryGold = currentGold;
+
+                var storedGoldDifference = storedGold - _lastStoredGold;
+                if (storedGoldDifference < 0)
+                {
+                    _sessionGoldSpentFromStash += Math.Abs(storedGoldDifference);
+                    _sessionStashSpendElapsedTime += deltaTime;
+                    _lastGoldActivityTime = DateTime.UtcNow;
+                    _lastStashSpendActivityTime = DateTime.UtcNow;
+                }
+                else if (DateTime.UtcNow - _lastStashSpendActivityTime > TimeSpan.FromSeconds(5))
+                {
+                    _sessionGoldSpentFromStash = 0;
+                    _sessionStashSpendElapsedTime = TimeSpan.Zero;
+                }
+                _lastStoredGold = storedGold;
+
+                if (DateTime.UtcNow - _lastGoldActivityTime > TimeSpan.FromMinutes(5))
+                {
+                    _sessionGoldGained = 0;
+                    _sessionElapsedTime = TimeSpan.Zero;
+                    _sessionGoldSpentFromStash = 0;
+                    _sessionStashSpendElapsedTime = TimeSpan.Zero;
+                    _lastInventoryGold = currentGold;
+                    _lastStoredGold = storedGold;
+                    _lastGoldActivityTime = DateTime.UtcNow;
+                }
+
+                var sessionGainRate = _sessionElapsedTime.TotalHours > 0 ? (_sessionGoldGained - _sessionGoldSpentFromStash) / _sessionElapsedTime.TotalHours : 0;
+                goldPerHour = $"G/H: {FormatNumber(sessionGainRate)}";
+            }
+
+            if (Settings.ShowGold.Value)
+            {
+                gold = $"Gold: {currentGold} ({storedGold})";
             }
         }
 
         public override void Render()
         {
+            var dummy = CalcXp.Value;
+            _previousArea = GameController.Area.CurrentArea;
             if (!CanRender)
                 return;
             var origStartPoint = GameController.LeftPanel.StartDrawPoint;
             var colorScheme = GetColorScheme();
+            var items = new List<(string, Color, bool)>();
 
-            var allItems = new[]
-            {
-                (playerLevelText, colorScheme.XphGetLeft),
-                (Time, colorScheme.Timer),
-                (ping, colorScheme.Ping),
-                (areaName, colorScheme.Area),
-                (timeLeft, colorScheme.TimeLeft),
-                (xpText, colorScheme.Xph)
-            };
+            if (Settings.ShowPlayerLevel.Value)
+                items.Add((playerLevelText, colorScheme.XphGetLeft, false));
+            if (Settings.ShowAreaName.Value)
+                items.Add((areaName, colorScheme.Area, false));
+            if (Settings.ShowAreaTime.Value)
+                items.Add((Time, colorScheme.Timer, false));
+            if (Settings.ShowTimeLeft.Value)
+                items.Add((timeLeft, colorScheme.TimeLeft, false));
+            if (Settings.ShowXpRate.Value)
+                items.Add((xpText, colorScheme.Xph, false));
+            if (Settings.ShowGold.Value)
+                items.Add((gold, colorScheme.Timer, false));
+            if (Settings.ShowGoldPerHour.Value)
+                items.Add((goldPerHour, colorScheme.Timer, false));
+            if (Settings.ShowPing.Value)
+                items.Add((ping, colorScheme.Ping, true));
 
-            var padding = 2;
-            var totalTextWidth = allItems.Sum(x => Graphics.MeasureText(x.Item1).X) + (allItems.Length - 1) * Graphics.MeasureText(" | ").X;
-            var barWidth = Settings.BarWidth.Value;
-            if (totalTextWidth > barWidth)
+            if (items.Count == 0)
             {
-                
-                totalTextWidth = barWidth;
+                GameController.LeftPanel.StartDrawPoint = new Vector2(origStartPoint.X, origStartPoint.Y);
+                return;
             }
 
-            var maxHeight = allItems.Max(x => Graphics.MeasureText(x.Item1).Y);
+            var horizontalPadding = 15;
+            var verticalPadding = 5;
+            var totalTextWidth = 0f;
+            var separatorWidth = Graphics.MeasureText(" | ").X;
+
+            foreach (var (text, color, isPing) in items)
+            {
+                if (isPing)
+                {
+                    totalTextWidth += Graphics.MeasureText("Ping: " + GameController.Game.IngameState.ServerData.Latency).X + 5 + 4 * 6;
+                }
+                else
+                {
+                    totalTextWidth += Graphics.MeasureText(text).X;
+                }
+                totalTextWidth += separatorWidth;
+            }
+            totalTextWidth -= separatorWidth;
+
+            var barWidth = totalTextWidth + horizontalPadding * 2;
+
+            var maxHeight = items.Max(x => Graphics.MeasureText(x.Item1).Y);
 
             var drawPoint = new Vector2N(
                 (GameController.Window.GetWindowRectangle().Width - barWidth) / 2 + Settings.DrawXOffset.Value,
                 origStartPoint.Y);
             leftPanelStartDrawRect = new RectangleF(drawPoint.X, drawPoint.Y, 1, 1);
 
-            var bounds = new RectangleF(drawPoint.X - padding, drawPoint.Y - padding, barWidth + padding * 2, maxHeight + padding * 2);
+            var bounds = new RectangleF(drawPoint.X, drawPoint.Y, barWidth, maxHeight + verticalPadding * 2);
             var backgroundColor = colorScheme.Background;
             backgroundColor.A = (byte)Settings.BackgroundAlpha.Value;
             Graphics.DrawBox(bounds, backgroundColor);
 
-            var textDrawPoint = new Vector2N(drawPoint.X + (barWidth - totalTextWidth) / 2, drawPoint.Y);
-
-            for (int i = 0; i < allItems.Length; i++)
+            if (bounds.Contains(Input.MousePositionNum))
             {
-                var (text, color) = allItems[i];
-                var textSize = Graphics.DrawText(text, textDrawPoint, color);
-                textDrawPoint.X += textSize.X;
+                var tooltipParts = new List<(string text, Color color)>();
+
+                if (_lastAreaGoldGained > 0 || _lastAreaXpGained > 0)
+                {
+                    tooltipParts.Add(("Last Area: ", colorScheme.Timer));
+                    tooltipParts.Add(($"Gold: {FormatNumber(_lastAreaGoldGained)}", colorScheme.Timer));
+                    tooltipParts.Add((" | ", colorScheme.Timer));
+
+                    var xpTextPart = $"XP: {FormatNumber(_lastAreaXpGained)} ({_lastAreaTimeSpent:mm\\:ss})";
+                    if (_lastAreaStartLevel > 0 && _lastAreaStartLevel < 100)
+                    {
+                        var totalXpForLevel = (float)Constants.PlayerXpLevels[_lastAreaStartLevel + 1] - (float)Constants.PlayerXpLevels[_lastAreaStartLevel];
+                        if (totalXpForLevel > 0)
+                        {
+                            var percentGained = _lastAreaXpGained / totalXpForLevel;
+                            xpTextPart += $" [{percentGained:P1}]";
+                        }
+                    }
+                    tooltipParts.Add((xpTextPart, colorScheme.Xph));
+                }
+
+                if (_timeToEmptyCountdown > TimeSpan.Zero)
+                {
+                    if (tooltipParts.Count > 0)
+                    {
+                        tooltipParts.Add((" | ", colorScheme.Timer));
+                    }
+
+                    string emptyInFormatted;
+                    if (_timeToEmptyCountdown.Days > 0)
+                    {
+                        string dayText = _timeToEmptyCountdown.Days == 1 ? "Day" : "Days";
+                        emptyInFormatted = $"{_timeToEmptyCountdown.Days} {dayText}, {_timeToEmptyCountdown.Hours:00}:{_timeToEmptyCountdown.Minutes:00}:{_timeToEmptyCountdown.Seconds:00}";
+                    }
+                    else
+                    {
+                        emptyInFormatted = $"{_timeToEmptyCountdown.Hours:00}:{_timeToEmptyCountdown.Minutes:00}:{_timeToEmptyCountdown.Seconds:00}";
+                    }
+                    tooltipParts.Add(($"Village Gold Empty In {emptyInFormatted}", colorScheme.Timer));
+                }
+
+                if (tooltipParts.Count > 0)
+                {
+                    var totalWidth = tooltipParts.Sum(p => Graphics.MeasureText(p.text).X) + 30;
+                    var tooltipMaxHeight = tooltipParts.Max(p => Graphics.MeasureText(p.text).Y);
+                    var overlayHeight = tooltipMaxHeight + 10;
+
+                    var overlayPosition = new Vector2N(
+                        (GameController.Window.GetWindowRectangle().Width - totalWidth) / 2,
+                        drawPoint.Y + maxHeight + verticalPadding * 2 + 5);
+
+                    Graphics.DrawBox(new RectangleF(overlayPosition.X, overlayPosition.Y, totalWidth, overlayHeight), colorScheme.Background);
+
+                    var textDrawPos = overlayPosition + new Vector2N(15, 5);
+                    foreach (var part in tooltipParts)
+                    {
+                        var size = Graphics.DrawText(part.text, textDrawPos, part.color);
+                        textDrawPos.X += size.X;
+                    }
+                }
+            }
+
+            var textDrawPoint = new Vector2N(drawPoint.X + horizontalPadding, drawPoint.Y + verticalPadding);
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                var (text, color, isPing) = items[i];
+
+                if (isPing)
+                {
+                    var pingTextSize = Graphics.DrawText(text, textDrawPoint, colorScheme.Ping);
+                    textDrawPoint.X += pingTextSize.X + 5;
+
+                    for (int j = 0; j < 4; j++)
+                    {
+                        var barColor = j < pingBars ? pingBarColor : Color.Gray;
+                        var barBounds = new RectangleF(textDrawPoint.X + j * 6, textDrawPoint.Y + maxHeight / 4, 5, maxHeight / 2);
+                        Graphics.DrawBox(barBounds, barColor);
+                    }
+                    textDrawPoint.X += 4 * 6;
+                }
+                else
+                {
+                    var textSize = Graphics.DrawText(text, textDrawPoint, color);
+                    textDrawPoint.X += textSize.X;
+                }
                 
-                if (i < allItems.Length - 1)
+                if (i < items.Count - 1)
                 {
                     var separatorSize = Graphics.DrawText(" | ", textDrawPoint, colorScheme.Timer); 
                     textDrawPoint.X += separatorSize.X;
@@ -319,6 +549,48 @@ namespace SimpleInformation
             }
             
             GameController.LeftPanel.StartDrawPoint = new Vector2(origStartPoint.X, origStartPoint.Y + maxHeight + 10);
+        }
+
+        private bool IsAnyGameUIVisible()
+        {
+            var ui = GameController.IngameState.IngameUi;
+            return ui.InventoryPanel.IsVisible ||
+                   ui.OpenLeftPanel.IsVisible ||
+                   ui.TreePanel.IsVisible ||
+                   ui.AtlasPanel.IsVisible ||
+                   ui.BetrayalWindow.IsVisible ||
+                   ui.DelveWindow.IsVisible ||
+                   ui.IncursionWindow.IsVisible ||
+                   ui.HeistWindow.IsVisible ||
+                   ui.ExpeditionWindow.IsVisible ||
+                   ui.RitualWindow.IsVisible ||
+                   ui.UltimatumPanel.IsVisible ||
+                   ui.SyndicatePanel.IsVisibleLocal; 
+        }
+
+        private string FormatNumber(double num)
+        {
+            if (num >= 1000000000)
+                return (num / 1000000000D).ToString("0.#") + "b";
+            if (num >= 1000000)
+                return (num / 1000000D).ToString("0.#") + "m";
+            if (num >= 1000)
+                return (num / 1000D).ToString("0.#") + "k";
+
+            return num.ToString("N0");
+        }
+
+        private ColorScheme GetColorScheme()
+        {
+            var scheme = (ColorSchemeList)Enum.Parse(typeof(ColorSchemeList), Settings.ColorScheme.Value);
+            return scheme switch
+            {
+                ColorSchemeList.SolarizedDark => new SolarizedDarkColorScheme(),
+                ColorSchemeList.Dracula => new DraculaColorScheme(),
+                ColorSchemeList.Inverted => new InvertedColorScheme(),
+                ColorSchemeList.Cyberpunk2077 => new Cyberpunk2077ColorScheme(),
+                _ => new DefaultColorScheme(),
+            };
         }
     }
 }
