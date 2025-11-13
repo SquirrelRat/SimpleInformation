@@ -78,6 +78,7 @@ namespace SimpleInformation
         private int _startLevel;
         private int _lastAreaStartLevel;
         private AreaInstance _previousArea;
+        private readonly Dictionary<string, RectangleF> _segmentBounds = new Dictionary<string, RectangleF>();
 
         public float GetEffectiveLevel(int monsterLevel)
         {
@@ -392,26 +393,28 @@ namespace SimpleInformation
             _previousArea = GameController.Area.CurrentArea;
             if (!CanRender)
                 return;
+
             var origStartPoint = GameController.LeftPanel.StartDrawPoint;
             var colorScheme = GetColorScheme();
-            var items = new List<(string, Color, bool)>();
+            var items = new List<(string text, Color color, bool isPing, string id)>();
+            _segmentBounds.Clear();
 
             if (Settings.ShowPlayerLevel.Value)
-                items.Add((playerLevelText, colorScheme.XphGetLeft, false));
+                items.Add((playerLevelText, colorScheme.XphGetLeft, false, "PlayerLevel"));
             if (Settings.ShowAreaName.Value)
-                items.Add((areaName, colorScheme.Area, false));
+                items.Add((areaName, colorScheme.Area, false, "AreaName"));
             if (Settings.ShowAreaTime.Value)
-                items.Add((Time, colorScheme.Timer, false));
+                items.Add((Time, colorScheme.Timer, false, "AreaTime"));
             if (Settings.ShowTimeLeft.Value)
-                items.Add((timeLeft, colorScheme.TimeLeft, false));
+                items.Add((timeLeft, colorScheme.TimeLeft, false, "TimeLeft"));
             if (Settings.ShowXpRate.Value)
-                items.Add((xpText, colorScheme.Xph, false));
+                items.Add((xpText, colorScheme.Xph, false, "XpRate"));
             if (Settings.ShowGold.Value)
-                items.Add((gold, colorScheme.Timer, false));
+                items.Add((gold, colorScheme.Timer, false, "Gold"));
             if (Settings.ShowGoldPerHour.Value)
-                items.Add((goldPerHour, colorScheme.Timer, false));
+                items.Add((goldPerHour, colorScheme.Timer, false, "GoldPerHour"));
             if (Settings.ShowPing.Value)
-                items.Add((ping, colorScheme.Ping, true));
+                items.Add((ping, colorScheme.Ping, true, "Ping"));
 
             if (items.Count == 0)
             {
@@ -424,7 +427,7 @@ namespace SimpleInformation
             var totalTextWidth = 0f;
             var separatorWidth = Graphics.MeasureText(" | ").X;
 
-            foreach (var (text, color, isPing) in items)
+            foreach (var (text, color, isPing, id) in items)
             {
                 if (isPing)
                 {
@@ -439,8 +442,7 @@ namespace SimpleInformation
             totalTextWidth -= separatorWidth;
 
             var barWidth = totalTextWidth + horizontalPadding * 2;
-
-            var maxHeight = items.Max(x => Graphics.MeasureText(x.Item1).Y);
+            var maxHeight = items.Max(x => Graphics.MeasureText(x.text).Y);
 
             var drawPoint = new Vector2N(
                 (GameController.Window.GetWindowRectangle().Width - barWidth) / 2 + Settings.DrawXOffset.Value,
@@ -452,75 +454,12 @@ namespace SimpleInformation
             backgroundColor.A = (byte)Settings.BackgroundAlpha.Value;
             Graphics.DrawBox(bounds, backgroundColor);
 
-            if (bounds.Contains(Input.MousePositionNum))
-            {
-                var tooltipParts = new List<(string text, Color color)>();
-
-                if (_lastAreaGoldGained > 0 || _lastAreaXpGained > 0)
-                {
-                    tooltipParts.Add(("Last Area: ", colorScheme.Timer));
-                    tooltipParts.Add(($"Gold: {FormatNumber(_lastAreaGoldGained)}", colorScheme.Timer));
-                    tooltipParts.Add((" | ", colorScheme.Timer));
-
-                    var xpTextPart = $"XP: {FormatNumber(_lastAreaXpGained)} ({_lastAreaTimeSpent:mm\\:ss})";
-                    if (_lastAreaStartLevel > 0 && _lastAreaStartLevel < 100)
-                    {
-                        var totalXpForLevel = (float)Constants.PlayerXpLevels[_lastAreaStartLevel + 1] - (float)Constants.PlayerXpLevels[_lastAreaStartLevel];
-                        if (totalXpForLevel > 0)
-                        {
-                            var percentGained = _lastAreaXpGained / totalXpForLevel;
-                            xpTextPart += $" [{percentGained:P1}]";
-                        }
-                    }
-                    tooltipParts.Add((xpTextPart, colorScheme.Xph));
-                }
-
-                if (_timeToEmptyCountdown > TimeSpan.Zero)
-                {
-                    if (tooltipParts.Count > 0)
-                    {
-                        tooltipParts.Add((" | ", colorScheme.Timer));
-                    }
-
-                    string emptyInFormatted;
-                    if (_timeToEmptyCountdown.Days > 0)
-                    {
-                        string dayText = _timeToEmptyCountdown.Days == 1 ? "Day" : "Days";
-                        emptyInFormatted = $"{_timeToEmptyCountdown.Days} {dayText}, {_timeToEmptyCountdown.Hours:00}:{_timeToEmptyCountdown.Minutes:00}:{_timeToEmptyCountdown.Seconds:00}";
-                    }
-                    else
-                    {
-                        emptyInFormatted = $"{_timeToEmptyCountdown.Hours:00}:{_timeToEmptyCountdown.Minutes:00}:{_timeToEmptyCountdown.Seconds:00}";
-                    }
-                    tooltipParts.Add(($"Village Gold Empty In {emptyInFormatted}", colorScheme.Timer));
-                }
-
-                if (tooltipParts.Count > 0)
-                {
-                    var totalWidth = tooltipParts.Sum(p => Graphics.MeasureText(p.text).X) + 30;
-                    var tooltipMaxHeight = tooltipParts.Max(p => Graphics.MeasureText(p.text).Y);
-                    var overlayHeight = tooltipMaxHeight + 10;
-
-                    var overlayPosition = new Vector2N(
-                        (GameController.Window.GetWindowRectangle().Width - totalWidth) / 2,
-                        drawPoint.Y + maxHeight + verticalPadding * 2 + 5);
-
-                    Graphics.DrawBox(new RectangleF(overlayPosition.X, overlayPosition.Y, totalWidth, overlayHeight), colorScheme.Background);
-
-                    var textDrawPos = overlayPosition + new Vector2N(15, 5);
-                    foreach (var part in tooltipParts)
-                    {
-                        var size = Graphics.DrawText(part.text, textDrawPos, part.color);
-                        textDrawPos.X += size.X;
-                    }
-                }
-            }
-
             var textDrawPoint = new Vector2N(drawPoint.X + horizontalPadding, drawPoint.Y + verticalPadding);
 
             for (int i = 0; i < items.Count; i++)
             {
-                var (text, color, isPing) = items[i];
+                var (text, color, isPing, id) = items[i];
+                var startX = textDrawPoint.X;
 
                 if (isPing)
                 {
@@ -540,16 +479,92 @@ namespace SimpleInformation
                     var textSize = Graphics.DrawText(text, textDrawPoint, color);
                     textDrawPoint.X += textSize.X;
                 }
-                
+
+                var segmentWidth = textDrawPoint.X - startX;
+                _segmentBounds[id] = new RectangleF(startX, drawPoint.Y, segmentWidth, maxHeight + verticalPadding * 2);
+
                 if (i < items.Count - 1)
                 {
-                    var separatorSize = Graphics.DrawText(" | ", textDrawPoint, colorScheme.Timer); 
+                    var separatorSize = Graphics.DrawText(" | ", textDrawPoint, colorScheme.Timer);
                     textDrawPoint.X += separatorSize.X;
                 }
             }
-            
+
+            HandleTooltips(drawPoint, maxHeight, verticalPadding, colorScheme);
+
             GameController.LeftPanel.StartDrawPoint = new Vector2(origStartPoint.X, origStartPoint.Y + maxHeight + 10);
         }
+
+                private void HandleTooltips(Vector2N drawPoint, float maxHeight, float verticalPadding, ColorScheme colorScheme)
+                {
+                    foreach (var segment in _segmentBounds)
+                    {
+                        if (segment.Value.Contains(Input.MousePositionNum))
+                        {
+                            var tooltipParts = new List<(string text, Color color)>();
+                            switch (segment.Key)
+                            {
+                                case "XpRate":
+                                    tooltipParts.Add(($"XP Gained in Area: {FormatNumber(_lastAreaXpGained)}", colorScheme.Xph));
+                                    if (_lastAreaStartLevel > 0 && _lastAreaStartLevel < 100)
+                                    {
+                                        var totalXpForLevel = (float)Constants.PlayerXpLevels[_lastAreaStartLevel + 1] - (float)Constants.PlayerXpLevels[_lastAreaStartLevel];
+                                        if (totalXpForLevel > 0)
+                                        {
+                                            var percentGained = _lastAreaXpGained / totalXpForLevel;
+                                            tooltipParts.Add(($" ({percentGained:P1} of Lvl {_lastAreaStartLevel})", colorScheme.Xph));
+                                        }
+                                    }
+                                    break;
+                                case "GoldPerHour":
+                                case "Gold":
+                                    tooltipParts.Add(($"Gold Gained in Area: {FormatNumber(_lastAreaGoldGained)}", colorScheme.Timer));
+                                    tooltipParts.Add(($" | Time: {_lastAreaTimeSpent:mm\\:ss}", colorScheme.Timer));
+                                    if (_timeToEmptyCountdown > TimeSpan.Zero)
+                                    {
+                                        string emptyInFormatted;
+                                        if (_timeToEmptyCountdown.Days > 0)
+                                        {
+                                            string dayText = _timeToEmptyCountdown.Days == 1 ? "Day" : "Days";
+                                            emptyInFormatted = $"{_timeToEmptyCountdown.Days} {dayText}, {_timeToEmptyCountdown.Hours:00}:{_timeToEmptyCountdown.Minutes:00}:{_timeToEmptyCountdown.Seconds:00}";
+                                        }
+                                        else
+                                        {
+                                            emptyInFormatted = $"{_timeToEmptyCountdown.Hours:00}:{_timeToEmptyCountdown.Minutes:00}:{_timeToEmptyCountdown.Seconds:00}";
+                                        }
+                                        tooltipParts.Add(($" | Village Gold Empty In: {emptyInFormatted}", colorScheme.Timer));
+                                    }
+                                    break;
+                            }
+        
+                            if (tooltipParts.Count > 0)
+                            {
+                                DrawTooltip(tooltipParts, drawPoint, maxHeight, verticalPadding, colorScheme);
+                                return;
+                            }
+                        }
+                    }
+                }
+        private void DrawTooltip(List<(string text, Color color)> tooltipParts, Vector2N drawPoint, float maxHeight, float verticalPadding, ColorScheme colorScheme)
+        {
+            var totalWidth = tooltipParts.Sum(p => Graphics.MeasureText(p.text).X) + 30;
+            var tooltipMaxHeight = tooltipParts.Max(p => Graphics.MeasureText(p.text).Y);
+            var overlayHeight = tooltipMaxHeight + 10;
+
+            var overlayPosition = new Vector2N(
+                (GameController.Window.GetWindowRectangle().Width - totalWidth) / 2,
+                drawPoint.Y + maxHeight + verticalPadding * 2 + 5);
+
+            Graphics.DrawBox(new RectangleF(overlayPosition.X, overlayPosition.Y, totalWidth, overlayHeight), colorScheme.Background);
+
+            var textDrawPos = overlayPosition + new Vector2N(15, 5);
+            foreach (var part in tooltipParts)
+            {
+                var size = Graphics.DrawText(part.text, textDrawPos, part.color);
+                textDrawPos.X += size.X;
+            }
+        }
+
 
         private bool IsAnyGameUIVisible()
         {
