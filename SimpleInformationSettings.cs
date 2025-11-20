@@ -13,7 +13,12 @@ namespace SimpleInformation
         SolarizedDark,
         Dracula,
         Inverted,
-        Cyberpunk2077
+        Cyberpunk2077,
+        Overwatch,
+        Minecraft,
+        Valorant,
+        Halo,
+        Monochrome
     }
 
     public class SimpleInformationSettings : ISettings

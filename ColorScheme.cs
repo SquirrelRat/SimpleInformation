@@ -75,4 +75,65 @@ namespace SimpleInformation
         public override Color Xph => new Color(255, 97, 89, 255);    
         public override Color XphGetLeft => new Color(255, 97, 89, 255);   
     }
+
+    // New UI-inspired color schemes (10 total)
+    public class OverwatchColorScheme : ColorScheme
+    {
+        public override Color Background => new Color(18, 22, 41, 255);
+        public override Color Timer => new Color(30, 144, 255, 255);
+        public override Color Fps => new Color(30, 144, 255, 255);
+        public override Color Ping => new Color(30, 144, 255, 255);
+        public override Color Area => new Color(0, 191, 255, 255);
+        public override Color TimeLeft => new Color(0, 214, 144, 255);
+        public override Color Xph => new Color(255, 215, 0, 255);
+        public override Color XphGetLeft => new Color(32, 178, 170, 255);
+    }
+
+    public class MinecraftColorScheme : ColorScheme
+    {
+        public override Color Background => new Color(20, 40, 20, 255);
+        public override Color Timer => new Color(76, 175, 80, 255);
+        public override Color Fps => new Color(76, 175, 80, 255);
+        public override Color Ping => new Color(76, 175, 80, 255);
+        public override Color Area => new Color(102, 187, 106, 255);
+        public override Color TimeLeft => new Color(255, 153, 51, 255);
+        public override Color Xph => new Color(255, 223, 0, 255);
+        public override Color XphGetLeft => new Color(139, 195, 74, 255);
+    }
+
+    public class ValorantColorScheme : ColorScheme
+    {
+        public override Color Background => new Color(25, 25, 60, 255);
+        public override Color Timer => new Color(199, 0, 255, 255);
+        public override Color Fps => new Color(199, 0, 255, 255);
+        public override Color Ping => new Color(199, 0, 255, 255);
+        public override Color Area => new Color(111, 45, 168, 255);
+        public override Color TimeLeft => new Color(255, 0, 128, 255);
+        public override Color Xph => new Color(0, 255, 170, 255);
+        public override Color XphGetLeft => new Color(255, 204, 255, 255);
+    }
+
+    public class HaloColorScheme : ColorScheme
+    {
+        public override Color Background => new Color(20, 20, 20, 255);
+        public override Color Timer => new Color(0, 153, 255, 255);
+        public override Color Fps => new Color(0, 153, 255, 255);
+        public override Color Ping => new Color(0, 153, 255, 255);
+        public override Color Area => new Color(0, 122, 204, 255);
+        public override Color TimeLeft => new Color(0, 255, 255, 255);
+        public override Color Xph => new Color(255, 215, 0, 255);
+        public override Color XphGetLeft => new Color(135, 206, 250, 255);
+    }
+
+    public class MonochromeColorScheme : ColorScheme
+    {
+        public override Color Background => new Color(24, 24, 24, 255);
+        public override Color Timer => Color.Gray;
+        public override Color Fps => Color.Gray;
+        public override Color Ping => Color.Gray;
+        public override Color Area => new Color(170, 170, 170, 255);
+        public override Color TimeLeft => Color.White;
+        public override Color Xph => new Color(200, 200, 200, 255);
+        public override Color XphGetLeft => Color.White;
+    }
 }

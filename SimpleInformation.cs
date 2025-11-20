@@ -20,26 +20,10 @@ namespace SimpleInformation
     {
         private string areaName = "";
 
-        private Dictionary<int, float> ArenaEffectiveLevels = new Dictionary<int, float>
-        {
-            {71, 70.94f},
-            {72, 71.82f},
-            {73, 72.64f},
-            {74, 73.4f},
-            {75, 74.1f},
-            {76, 74.74f},
-            {77, 75.32f},
-            {78, 75.84f},
-            {79, 76.3f},
-            {80, 76.7f},
-            {81, 77.04f},
-            {82, 77.32f},
-            {83, 77.54f},
-            {84, 77.7f}
-        };
+        private Dictionary<int, float> arenaEffectiveLevels = new Dictionary<int, float>();
 
-        private TimeCache<bool> CalcXp;
-        private bool CanRender;
+        private TimeCache<bool> calcXp;
+        private bool canRender;
         private DebugInformation debugInformation;
         private string latency = "";
         private string ping = "";
@@ -48,13 +32,13 @@ namespace SimpleInformation
         private string gold = "";
         private string goldPerHour = "";
         private RectangleF leftPanelStartDrawRect = RectangleF.Empty;
-        private TimeCache<bool> LevelPenalty;
+        private TimeCache<bool> levelPenalty;
         private double levelXpPenalty, partyXpPenalty;
         private float percentGot;
         private DateTime startTime;
         private long startXp, getXp, xpLeftQ;
         private DateTime lastTime;
-        private string Time = "";
+        private string time = "";
         private string timeLeft = "";
         private TimeSpan timeSpan;
         private string xpRate = "";
@@ -100,12 +84,12 @@ namespace SimpleInformation
             };
 
             GameController.LeftPanel.WantUse(() => Settings.Enable);
-            CalcXp = new TimeCache<bool>(() =>
+            calcXp = new TimeCache<bool>(() =>
             {
                 var gameUi = GameController.Game.IngameState.IngameUi;
                 if (GameController.Area.CurrentArea == null || gameUi.InventoryPanel.IsVisible || gameUi.SyndicatePanel.IsVisibleLocal)
                 {
-                    CanRender = false;
+                    canRender = false;
                     return false;
                 }
 
@@ -113,11 +97,11 @@ namespace SimpleInformation
                 if (UIHover.Tooltip != null && UIHover.Tooltip.IsVisibleLocal &&
                     UIHover.Tooltip.GetClientRectCache.Intersects(leftPanelStartDrawRect))
                 {
-                    CanRender = false;
+                    canRender = false;
                     return false;
                 }
 
-                CanRender = true;
+                canRender = true;
 
                 var now = DateTime.UtcNow;
                 var deltaTime = now - lastTime;
@@ -127,12 +111,12 @@ namespace SimpleInformation
                 UpdateGeneralInfo();
                 UpdateGoldStats(deltaTime);
 
-                var levelPenaltyValue = LevelPenalty.Value;
+                var levelPenaltyValue = levelPenalty.Value;
 
                 return true;
             }, 1000);
 
-            LevelPenalty = new TimeCache<bool>(() =>
+            levelPenalty = new TimeCache<bool>(() =>
             {
                 partyXpPenalty = PartyXpPenalty();
                 levelXpPenalty = LevelXpPenalty();
@@ -164,7 +148,7 @@ namespace SimpleInformation
         public override void AreaChange(AreaInstance area)
         {
             _lastStoredGoldForCountdown = -1;
-            LevelPenalty.ForceUpdate();
+            levelPenalty.ForceUpdate();
 
             if (_previousArea != null && !_previousArea.IsHideout && !_previousArea.IsTown)
             {
@@ -230,11 +214,11 @@ namespace SimpleInformation
             var characterLevel = GameController.Player.GetComponent<Player>()?.Level ?? 100;
 
 
-            if (arenaLevel > 70 && !ArenaEffectiveLevels.ContainsKey(arenaLevel))
+            if (arenaLevel > 70 && !arenaEffectiveLevels.ContainsKey(arenaLevel))
             {
-                ArenaEffectiveLevels.Add(arenaLevel, GetEffectiveLevel(arenaLevel));
+                arenaEffectiveLevels.Add(arenaLevel, GetEffectiveLevel(arenaLevel));
             }
-            var effectiveArenaLevel = arenaLevel < 71 ? arenaLevel : ArenaEffectiveLevels[arenaLevel];
+            var effectiveArenaLevel = arenaLevel < 71 ? arenaLevel : arenaEffectiveLevels[arenaLevel];
             var safeZone = Math.Floor(Convert.ToDouble(characterLevel) / 16) + 3;
             var effectiveDifference = Math.Max(Math.Abs(characterLevel - effectiveArenaLevel) - safeZone, 0);
             double xpMultiplier;
@@ -277,7 +261,7 @@ namespace SimpleInformation
         {
             var areaCurrentArea = GameController.Area.CurrentArea;
             timeSpan = DateTime.UtcNow - areaCurrentArea.TimeEntered;
-            Time = AreaInstance.GetTimeString(timeSpan);
+            time = AreaInstance.GetTimeString(timeSpan);
             xpText = $"{xpRate} ({percentGot:P0})".ToUpper();
 
             var areaSuffix = (areaCurrentArea.RealLevel >= 68) ? $" - T{areaCurrentArea.RealLevel - 67}" : "";
@@ -389,9 +373,9 @@ namespace SimpleInformation
 
         public override void Render()
         {
-            var dummy = CalcXp.Value;
+            var dummy = calcXp.Value;
             _previousArea = GameController.Area.CurrentArea;
-            if (!CanRender)
+            if (!canRender)
                 return;
 
             var origStartPoint = GameController.LeftPanel.StartDrawPoint;
@@ -404,7 +388,7 @@ namespace SimpleInformation
             if (Settings.ShowAreaName.Value)
                 items.Add((areaName, colorScheme.Area, false, "AreaName"));
             if (Settings.ShowAreaTime.Value)
-                items.Add((Time, colorScheme.Timer, false, "AreaTime"));
+                items.Add((time, colorScheme.Timer, false, "AreaLeft"));
             if (Settings.ShowTimeLeft.Value)
                 items.Add((timeLeft, colorScheme.TimeLeft, false, "TimeLeft"));
             if (Settings.ShowXpRate.Value)
@@ -490,70 +474,83 @@ namespace SimpleInformation
                 }
             }
 
+            if (_segmentBounds.ContainsKey("Gold") && _segmentBounds.ContainsKey("GoldPerHour"))
+            {
+                var goldBounds = _segmentBounds["Gold"];
+                var ghBounds = _segmentBounds["GoldPerHour"];
+                var combinedX = Math.Min(goldBounds.X, ghBounds.X);
+                var combinedWidth = Math.Max(goldBounds.X + goldBounds.Width, ghBounds.X + ghBounds.Width) - combinedX;
+                _segmentBounds["Gold"] = new RectangleF(combinedX, goldBounds.Y, combinedWidth, goldBounds.Height);
+                _segmentBounds.Remove("GoldPerHour");
+            }
+
             HandleTooltips(drawPoint, maxHeight, verticalPadding, colorScheme);
 
             GameController.LeftPanel.StartDrawPoint = new Vector2(origStartPoint.X, origStartPoint.Y + maxHeight + 10);
         }
 
-                private void HandleTooltips(Vector2N drawPoint, float maxHeight, float verticalPadding, ColorScheme colorScheme)
+        private void HandleTooltips(Vector2N drawPoint, float maxHeight, float verticalPadding, ColorScheme colorScheme)
+        {
+            foreach (var segment in _segmentBounds)
+            {
+                if (segment.Value.Contains(Input.MousePositionNum))
                 {
-                    foreach (var segment in _segmentBounds)
+                    var tooltipParts = new List<(string text, Color color)>();
+                    switch (segment.Key)
                     {
-                        if (segment.Value.Contains(Input.MousePositionNum))
-                        {
-                            var tooltipParts = new List<(string text, Color color)>();
-                            switch (segment.Key)
+                        case "XpRate":
+                            tooltipParts.Add(($"XP Gained in Area: {FormatNumber(_lastAreaXpGained)}", colorScheme.Xph));
+                            if (_lastAreaStartLevel > 0 && _lastAreaStartLevel < 100)
                             {
-                                case "XpRate":
-                                    tooltipParts.Add(($"XP Gained in Area: {FormatNumber(_lastAreaXpGained)}", colorScheme.Xph));
-                                    if (_lastAreaStartLevel > 0 && _lastAreaStartLevel < 100)
-                                    {
-                                        var totalXpForLevel = (float)Constants.PlayerXpLevels[_lastAreaStartLevel + 1] - (float)Constants.PlayerXpLevels[_lastAreaStartLevel];
-                                        if (totalXpForLevel > 0)
-                                        {
-                                            var percentGained = _lastAreaXpGained / totalXpForLevel;
-                                            tooltipParts.Add(($" ({percentGained:P1} of Lvl {_lastAreaStartLevel})", colorScheme.Xph));
-                                        }
-                                    }
-                                    break;
-                                case "GoldPerHour":
-                                case "Gold":
-                                    tooltipParts.Add(($"Gold Gained in Area: {FormatNumber(_lastAreaGoldGained)}", colorScheme.Timer));
-                                    tooltipParts.Add(($" | Time: {_lastAreaTimeSpent:mm\\:ss}", colorScheme.Timer));
-                                    if (_timeToEmptyCountdown > TimeSpan.Zero)
-                                    {
-                                        string emptyInFormatted;
-                                        if (_timeToEmptyCountdown.Days > 0)
-                                        {
-                                            string dayText = _timeToEmptyCountdown.Days == 1 ? "Day" : "Days";
-                                            emptyInFormatted = $"{_timeToEmptyCountdown.Days} {dayText}, {_timeToEmptyCountdown.Hours:00}:{_timeToEmptyCountdown.Minutes:00}:{_timeToEmptyCountdown.Seconds:00}";
-                                        }
-                                        else
-                                        {
-                                            emptyInFormatted = $"{_timeToEmptyCountdown.Hours:00}:{_timeToEmptyCountdown.Minutes:00}:{_timeToEmptyCountdown.Seconds:00}";
-                                        }
-                                        tooltipParts.Add(($" | Village Gold Empty In: {emptyInFormatted}", colorScheme.Timer));
-                                    }
-                                    break;
+                                var totalXpForLevel = (float)Constants.PlayerXpLevels[_lastAreaStartLevel + 1] - (float)Constants.PlayerXpLevels[_lastAreaStartLevel];
+                                if (totalXpForLevel > 0)
+                                {
+                                    var percentGained = _lastAreaXpGained / totalXpForLevel;
+                                    tooltipParts.Add(($" ({percentGained:P1} of Lvl {_lastAreaStartLevel})", colorScheme.Xph));
+                                }
                             }
-        
-                            if (tooltipParts.Count > 0)
+                            break;
+                        case "GoldPerHour":
+                        case "Gold":
+                            tooltipParts.Add(($"Gold Gained in Area: {FormatNumber(_lastAreaGoldGained)}", colorScheme.Timer));
+                            tooltipParts.Add(($" | Time: {_lastAreaTimeSpent:mm\\:ss}", colorScheme.Timer));
+                            if (_timeToEmptyCountdown > TimeSpan.Zero)
                             {
-                                DrawTooltip(tooltipParts, drawPoint, maxHeight, verticalPadding, colorScheme);
-                                return;
+                                string emptyInFormatted;
+                                if (_timeToEmptyCountdown.Days > 0)
+                                {
+                                    string dayText = _timeToEmptyCountdown.Days == 1 ? "Day" : "Days";
+                                    emptyInFormatted = $"{_timeToEmptyCountdown.Days} {dayText}, {_timeToEmptyCountdown.Hours:00}:{_timeToEmptyCountdown.Minutes:00}:{_timeToEmptyCountdown.Seconds:00}";
+                                }
+                                else
+                                {
+                                    emptyInFormatted = $"{_timeToEmptyCountdown.Hours:00}:{_timeToEmptyCountdown.Minutes:00}:{_timeToEmptyCountdown.Seconds:00}";
+                                }
+                                tooltipParts.Add((" | Village Gold Empty In: " + emptyInFormatted, colorScheme.Timer));
                             }
-                        }
+                            break;
+                        case "Ping":
+                            tooltipParts.Add(("Ping: " + GameController.Game.IngameState.ServerData.Latency + " ms", colorScheme.Ping));
+                            break;
+                    }
+
+                    if (tooltipParts.Count > 0)
+                    {
+                        DrawTooltip(tooltipParts, segment.Value, maxHeight, verticalPadding, colorScheme);
+                        return;
                     }
                 }
-        private void DrawTooltip(List<(string text, Color color)> tooltipParts, Vector2N drawPoint, float maxHeight, float verticalPadding, ColorScheme colorScheme)
+            }
+        }
+        private void DrawTooltip(List<(string text, Color color)> tooltipParts, RectangleF segmentBounds, float maxHeight, float verticalPadding, ColorScheme colorScheme)
         {
             var totalWidth = tooltipParts.Sum(p => Graphics.MeasureText(p.text).X) + 30;
             var tooltipMaxHeight = tooltipParts.Max(p => Graphics.MeasureText(p.text).Y);
             var overlayHeight = tooltipMaxHeight + 10;
 
             var overlayPosition = new Vector2N(
-                (GameController.Window.GetWindowRectangle().Width - totalWidth) / 2,
-                drawPoint.Y + maxHeight + verticalPadding * 2 + 5);
+                segmentBounds.X + (segmentBounds.Width - totalWidth) / 2,
+                segmentBounds.Y + segmentBounds.Height + 5);
 
             Graphics.DrawBox(new RectangleF(overlayPosition.X, overlayPosition.Y, totalWidth, overlayHeight), colorScheme.Background);
 
@@ -564,7 +561,6 @@ namespace SimpleInformation
                 textDrawPos.X += size.X;
             }
         }
-
 
         private bool IsAnyGameUIVisible()
         {
@@ -604,6 +600,11 @@ namespace SimpleInformation
                 ColorSchemeList.Dracula => new DraculaColorScheme(),
                 ColorSchemeList.Inverted => new InvertedColorScheme(),
                 ColorSchemeList.Cyberpunk2077 => new Cyberpunk2077ColorScheme(),
+                ColorSchemeList.Overwatch => new OverwatchColorScheme(),
+                ColorSchemeList.Minecraft => new MinecraftColorScheme(),
+                ColorSchemeList.Valorant => new ValorantColorScheme(),
+                ColorSchemeList.Halo => new HaloColorScheme(),
+                ColorSchemeList.Monochrome => new MonochromeColorScheme(),
                 _ => new DefaultColorScheme(),
             };
         }
