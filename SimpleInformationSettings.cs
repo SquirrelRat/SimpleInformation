@@ -18,7 +18,8 @@ namespace SimpleInformation
         Minecraft,
         Valorant,
         Halo,
-        Monochrome
+        Monochrome,
+        Custom
     }
 
     public class SimpleInformationSettings : ISettings
@@ -51,5 +52,23 @@ namespace SimpleInformation
         public ToggleNode ShowXpRate { get; set; } = new ToggleNode(true);
         [Menu("Show G/H", "Toggles the display of the player's gold per hour.")]
         public ToggleNode ShowGoldPerHour { get; set; } = new ToggleNode(true);
+
+        [Menu("Background Color", "Custom color for the background.")]
+        public ColorNode BackgroundColor { get; set; } = new ColorNode(Color.White);
+        [Menu("Timer Color", "Custom color for timer elements.")]
+        public ColorNode TimerColor { get; set; } = new ColorNode(Color.White);
+        [Menu("Ping Color", "Custom color for ping display.")]
+        public ColorNode PingColor { get; set; } = new ColorNode(Color.White);
+        [Menu("Area Color", "Custom color for area name.")]
+        public ColorNode AreaColor { get; set; } = new ColorNode(Color.White);
+        [Menu("Time Left Color", "Custom color for time left to level.")]
+        public ColorNode TimeLeftColor { get; set; } = new ColorNode(Color.White);
+        [Menu("XP Rate Color", "Custom color for XP rate.")]
+        public ColorNode XphColor { get; set; } = new ColorNode(Color.White);
+        [Menu("Player Level Color", "Custom color for player level.")]
+        public ColorNode XphGetLeftColor { get; set; } = new ColorNode(Color.White);
+
+        [Menu("Reset Theme Colors", "Resets custom colors to the selected theme's defaults.")]
+        public ButtonNode ResetThemeColors { get; set; } = new ButtonNode();
     }
 }

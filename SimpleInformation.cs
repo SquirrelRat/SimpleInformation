@@ -63,6 +63,10 @@ namespace SimpleInformation
         private int _lastAreaStartLevel;
         private AreaInstance _previousArea;
         private readonly Dictionary<string, RectangleF> _segmentBounds = new Dictionary<string, RectangleF>();
+        private string _lastTheme = "";
+
+        private readonly Queue<int> _pingHistory = new Queue<int>();
+        private const int MAX_HISTORY_POINTS = 15;
 
         public float GetEffectiveLevel(int monsterLevel)
         {
@@ -124,6 +128,10 @@ namespace SimpleInformation
             }, 1000);
 
             OnEntityListWrapperOnPlayerUpdate(this, GameController.Player);
+
+            Settings.ResetThemeColors.OnPressed += ResetThemeColors;
+
+            UpdateColorNodes();
 
             return true;
         }
@@ -273,6 +281,10 @@ namespace SimpleInformation
             else if (latency <= 100) { pingBars = 3; pingBarColor = Color.Green; }
             else if (latency <= 150) { pingBars = 2; pingBarColor = Color.Yellow; }
             else { pingBars = 1; pingBarColor = Color.Red; }
+
+            _pingHistory.Enqueue(latency);
+            if (_pingHistory.Count > MAX_HISTORY_POINTS)
+                _pingHistory.Dequeue();
         }
 
         private void UpdateGoldStats(TimeSpan deltaTime)
@@ -373,6 +385,12 @@ namespace SimpleInformation
 
         public override void Render()
         {
+            if (Settings.ColorScheme.Value != _lastTheme)
+            {
+                UpdateColorNodes();
+                _lastTheme = Settings.ColorScheme.Value;
+            }
+
             var dummy = calcXp.Value;
             _previousArea = GameController.Area.CurrentArea;
             if (!canRender)
@@ -530,23 +548,28 @@ namespace SimpleInformation
                             }
                             break;
                         case "Ping":
-                            tooltipParts.Add(("Ping: " + GameController.Game.IngameState.ServerData.Latency + " ms", colorScheme.Ping));
                             break;
                     }
 
-                    if (tooltipParts.Count > 0)
+                    bool hasGraph = segment.Key == "Ping";
+                    if (tooltipParts.Count > 0 || hasGraph)
                     {
-                        DrawTooltip(tooltipParts, segment.Value, maxHeight, verticalPadding, colorScheme);
+                        DrawTooltip(tooltipParts, segment.Value, maxHeight, verticalPadding, colorScheme, hasGraph);
                         return;
                     }
                 }
             }
         }
-        private void DrawTooltip(List<(string text, Color color)> tooltipParts, RectangleF segmentBounds, float maxHeight, float verticalPadding, ColorScheme colorScheme)
+        private void DrawTooltip(List<(string text, Color color)> tooltipParts, RectangleF segmentBounds, float maxHeight, float verticalPadding, ColorScheme colorScheme, bool hasGraph)
         {
-            var totalWidth = tooltipParts.Sum(p => Graphics.MeasureText(p.text).X) + 30;
-            var tooltipMaxHeight = tooltipParts.Max(p => Graphics.MeasureText(p.text).Y);
+            var totalWidth = tooltipParts.Any() ? tooltipParts.Sum(p => Graphics.MeasureText(p.text).X) + 30 : 100;
+            var tooltipMaxHeight = tooltipParts.Any() ? tooltipParts.Max(p => Graphics.MeasureText(p.text).Y) : 0;
             var overlayHeight = tooltipMaxHeight + 10;
+
+            if (hasGraph)
+            {
+                overlayHeight += 25;
+            }
 
             var overlayPosition = new Vector2N(
                 segmentBounds.X + (segmentBounds.Width - totalWidth) / 2,
@@ -554,11 +577,49 @@ namespace SimpleInformation
 
             Graphics.DrawBox(new RectangleF(overlayPosition.X, overlayPosition.Y, totalWidth, overlayHeight), colorScheme.Background);
 
-            var textDrawPos = overlayPosition + new Vector2N(15, 5);
-            foreach (var part in tooltipParts)
+            if (tooltipParts.Any())
             {
-                var size = Graphics.DrawText(part.text, textDrawPos, part.color);
-                textDrawPos.X += size.X;
+                var textDrawPos = overlayPosition + new Vector2N(15, 5);
+                foreach (var part in tooltipParts)
+                {
+                    var size = Graphics.DrawText(part.text, textDrawPos, part.color);
+                    textDrawPos.X += size.X;
+                }
+            }
+
+            // Draw mini graph if applicable
+            if (hasGraph)
+            {
+                DrawMiniGraph(_pingHistory, overlayPosition, totalWidth, colorScheme.Ping);
+            }
+        }
+
+        private void DrawMiniGraph(Queue<int> data, Vector2N overlayPosition, float totalWidth, Color graphColor)
+        {
+            if (data.Count < 2) return;
+
+            var graphX = overlayPosition.X + 5;
+            var graphY = overlayPosition.Y + 5;
+            var graphWidth = totalWidth - 10;
+            var graphHeight = 15;
+
+            var values = data.ToArray();
+            var min = (double)values.Min();
+            var max = (double)values.Max();
+            var range = max - min;
+            if (range == 0) range = 1;
+
+            var points = new List<System.Numerics.Vector2>();
+            for (int i = 0; i < values.Length; i++)
+            {
+                var x = graphX + (i * graphWidth / (values.Length - 1));
+                var y = graphY + graphHeight - ((values[i] - min) / range * graphHeight);
+                points.Add(new System.Numerics.Vector2(x, (float)y));
+            }
+
+            for (int i = 1; i < points.Count; i++)
+            {
+                Graphics.DrawLine(points[i - 1], points[i], 2f, graphColor);
             }
         }
 
@@ -579,6 +640,69 @@ namespace SimpleInformation
                    ui.SyndicatePanel.IsVisibleLocal; 
         }
 
+        private void UpdateColorNodes()
+        {
+            var scheme = (ColorSchemeList)Enum.Parse(typeof(ColorSchemeList), Settings.ColorScheme.Value);
+            if (scheme == ColorSchemeList.Custom) return;
+            ColorScheme colorScheme = scheme switch
+            {
+                ColorSchemeList.SolarizedDark => new SolarizedDarkColorScheme(),
+                ColorSchemeList.Dracula => new DraculaColorScheme(),
+                ColorSchemeList.Inverted => new InvertedColorScheme(),
+                ColorSchemeList.Cyberpunk2077 => new Cyberpunk2077ColorScheme(),
+                ColorSchemeList.Overwatch => new OverwatchColorScheme(),
+                ColorSchemeList.Minecraft => new MinecraftColorScheme(),
+                ColorSchemeList.Valorant => new ValorantColorScheme(),
+                ColorSchemeList.Halo => new HaloColorScheme(),
+                ColorSchemeList.Monochrome => new MonochromeColorScheme(),
+                _ => new DefaultColorScheme(),
+            };
+            Settings.BackgroundColor.Value = colorScheme.Background;
+            Settings.TimerColor.Value = colorScheme.Timer;
+            Settings.PingColor.Value = colorScheme.Ping;
+            Settings.AreaColor.Value = colorScheme.Area;
+            Settings.TimeLeftColor.Value = colorScheme.TimeLeft;
+            Settings.XphColor.Value = colorScheme.Xph;
+            Settings.XphGetLeftColor.Value = colorScheme.XphGetLeft;
+        }
+
+        private void ResetThemeColors()
+        {
+            var scheme = (ColorSchemeList)Enum.Parse(typeof(ColorSchemeList), Settings.ColorScheme.Value);
+            ColorScheme defaultScheme;
+            if (scheme == ColorSchemeList.Custom)
+            {
+                Settings.BackgroundColor.Value = Color.White;
+                Settings.TimerColor.Value = Color.White;
+                Settings.PingColor.Value = Color.White;
+                Settings.AreaColor.Value = Color.White;
+                Settings.TimeLeftColor.Value = Color.White;
+                Settings.XphColor.Value = Color.White;
+                Settings.XphGetLeftColor.Value = Color.White;
+                return;
+            }
+            defaultScheme = scheme switch
+            {
+                ColorSchemeList.SolarizedDark => new SolarizedDarkColorScheme(),
+                ColorSchemeList.Dracula => new DraculaColorScheme(),
+                ColorSchemeList.Inverted => new InvertedColorScheme(),
+                ColorSchemeList.Cyberpunk2077 => new Cyberpunk2077ColorScheme(),
+                ColorSchemeList.Overwatch => new OverwatchColorScheme(),
+                ColorSchemeList.Minecraft => new MinecraftColorScheme(),
+                ColorSchemeList.Valorant => new ValorantColorScheme(),
+                ColorSchemeList.Halo => new HaloColorScheme(),
+                ColorSchemeList.Monochrome => new MonochromeColorScheme(),
+                _ => new DefaultColorScheme(),
+            };
+            Settings.BackgroundColor.Value = defaultScheme.Background;
+            Settings.TimerColor.Value = defaultScheme.Timer;
+            Settings.PingColor.Value = defaultScheme.Ping;
+            Settings.AreaColor.Value = defaultScheme.Area;
+            Settings.TimeLeftColor.Value = defaultScheme.TimeLeft;
+            Settings.XphColor.Value = defaultScheme.Xph;
+            Settings.XphGetLeftColor.Value = defaultScheme.XphGetLeft;
+        }
+
         private string FormatNumber(double num)
         {
             if (num >= 1000000000)
@@ -593,20 +717,7 @@ namespace SimpleInformation
 
         private ColorScheme GetColorScheme()
         {
-            var scheme = (ColorSchemeList)Enum.Parse(typeof(ColorSchemeList), Settings.ColorScheme.Value);
-            return scheme switch
-            {
-                ColorSchemeList.SolarizedDark => new SolarizedDarkColorScheme(),
-                ColorSchemeList.Dracula => new DraculaColorScheme(),
-                ColorSchemeList.Inverted => new InvertedColorScheme(),
-                ColorSchemeList.Cyberpunk2077 => new Cyberpunk2077ColorScheme(),
-                ColorSchemeList.Overwatch => new OverwatchColorScheme(),
-                ColorSchemeList.Minecraft => new MinecraftColorScheme(),
-                ColorSchemeList.Valorant => new ValorantColorScheme(),
-                ColorSchemeList.Halo => new HaloColorScheme(),
-                ColorSchemeList.Monochrome => new MonochromeColorScheme(),
-                _ => new DefaultColorScheme(),
-            };
+            return new CustomColorScheme(Settings);
         }
     }
 }
